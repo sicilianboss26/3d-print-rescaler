@@ -17,7 +17,7 @@ st.title("🖨️ 3D Print Alignment & Dimension Studio")
 uploaded_files = st.file_uploader("Upload STL files", type=["stl"], accept_multiple_files=True)
 
 if uploaded_files:
-    # Initialize stable tracking states
+    # --- FIXED STATE MEMORY STORAGE ---
     if "offsets" not in st.session_state:
         st.session_state.offsets = {}
     if "initial_centers" not in st.session_state:
@@ -36,14 +36,12 @@ if uploaded_files:
         try:
             mesh = trimesh.load(io.BytesIO(f.getvalue()), file_type='stl')
             
-            # CRITICAL FIX: Only calculate and apply the center offset ONCE on upload
             if f.name not in st.session_state.initial_centers:
                 st.session_state.initial_centers[f.name] = -mesh.centroid
                 st.session_state.offsets[f.name] = {
                     "x": 0.0, "y": 0.0, "z": 0.0, "roll": 0.0, "tumble": 0.0, "spin": 0.0
                 }
             
-            # Apply the stable baseline offset
             mesh.apply_translation(st.session_state.initial_centers[f.name])
             
             orig = get_bounds(mesh)
@@ -117,23 +115,31 @@ if uploaded_files:
                     st.session_state.offsets[name] = {"x":0.0, "y":0.0, "z":0.0, "roll":0.0, "tumble":0.0, "spin":0.0}
                 st.rerun()
 
-            # --- SIDEBAR FINE TUNER PANEL ---
+            # --- SIDEBAR FINE TUNER PANEL WITH MEMORY RETENTION ---
             st.sidebar.header("🛠️ Round Parts Axis Controller")
             target_part = st.sidebar.selectbox("Select active part to adjust:", options=selected_names)
             
             if target_part:
-                state = st.session_state.offsets[target_part]
+                # Read directly from session state to prevent value dropped on reload loop
+                current_x = float(st.session_state.offsets[target_part]["x"])
+                current_y = float(st.session_state.offsets[target_part]["y"])
+                current_z = float(st.session_state.offsets[target_part]["z"])
+                
+                current_roll = float(st.session_state.offsets[target_part]["roll"])
+                current_tumble = float(st.session_state.offsets[target_part]["tumble"])
+                current_spin = float(st.session_state.offsets[target_part]["spin"])
+                
                 st.sidebar.markdown(f"**Modifying Shape:** `{target_part}`")
                 
                 st.sidebar.markdown("### 📍 Linear Shift (mm)")
-                state["x"] = st.sidebar.slider("Move X (Left/Right)", -200.0, 200.0, float(state["x"]), step=0.5, key=f"sld_x_{target_part}")
-                state["y"] = st.sidebar.slider("Move Y (Forward/Back)", -200.0, 200.0, float(state["y"]), step=0.5, key=f"sld_y_{target_part}")
-                state["z"] = st.sidebar.slider("Move Z (Up/Down)", -200.0, 200.0, float(state["z"]), step=0.5, key=f"sld_z_{target_part}")
+                st.session_state.offsets[target_part]["x"] = st.sidebar.slider("Move X (Left/Right)", -200.0, 200.0, current_x, step=0.5, key=f"sld_x_{target_part}")
+                st.session_state.offsets[target_part]["y"] = st.sidebar.slider("Move Y (Forward/Back)", -200.0, 200.0, current_y, step=0.5, key=f"sld_y_{target_part}")
+                st.session_state.offsets[target_part]["z"] = st.sidebar.slider("Move Z (Up/Down)", -200.0, 200.0, current_z, step=0.5, key=f"sld_z_{target_part}")
                 
                 st.sidebar.markdown("### 🔄 Circular Rotation (Degrees)")
-                state["roll"] = st.sidebar.slider("Roll (X Axis)", 0.0, 360.0, float(state["roll"]), step=1.0, key=f"sld_roll_{target_part}")
-                state["tumble"] = st.sidebar.slider("Tumble (Y Axis)", 0.0, 360.0, float(state["tumble"]), step=1.0, key=f"sld_tumble_{target_part}")
-                state["spin"] = st.sidebar.slider("Spin (Z Axis - Dial Rotation)", 0.0, 360.0, float(state["spin"]), step=1.0, key=f"sld_spin_{target_part}")
+                st.session_state.offsets[target_part]["roll"] = st.sidebar.slider("Roll (X Axis)", 0.0, 360.0, current_roll, step=1.0, key=f"sld_roll_{target_part}")
+                st.session_state.offsets[target_part]["tumble"] = st.sidebar.slider("Tumble (Y Axis)", 0.0, 360.0, current_tumble, step=1.0, key=f"sld_tumble_{target_part}")
+                st.session_state.offsets[target_part]["spin"] = st.sidebar.slider("Spin (Z Axis - Dial Rotation)", 0.0, 360.0, current_spin, step=1.0, key=f"sld_spin_{target_part}")
 
             # Compile Full View Scene Safely
             try:
