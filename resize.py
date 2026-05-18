@@ -11,13 +11,12 @@ def get_bounds(mesh):
         metrics["🔴 Diameter"] = (x + y) / 2.0
     return metrics
 
-st.set_page_config(page_title="3D Print Rescaler", layout="wide") # Set to wide for side-by-side view
+st.set_page_config(page_title="3D Print Rescaler", layout="wide") # Forced wide layout for zero-obstruct view
 st.title("🖨️ 3D Print Alignment & Dimension Studio")
 
 uploaded_files = st.file_uploader("Upload STL files", type=["stl"], accept_multiple_files=True)
 
 if uploaded_files:
-    # Set up safe permanent state memory
     if "offsets" not in st.session_state:
         st.session_state.offsets = {}
     if "initial_centers" not in st.session_state:
@@ -92,19 +91,22 @@ if uploaded_files:
         )
         
         if selected_names:
-            # Safe layout calculation button block
+            # Main functional action block
             col_btn1, col_btn2 = st.columns(2)
             
             if col_btn1.button("🎯 Auto-Align Stack (Match Joints)", use_container_width=True):
+                # Custom calculation layout logic based on your uploaded cylinder dimensions
                 sorted_by_height = sorted(selected_names, key=lambda n: processed_parts[n].bounds[1][2] - processed_parts[n].bounds[0][2])
                 current_z_floor = 0.0
                 for name in sorted_by_height:
                     mesh = processed_parts[name]
                     mesh_height = mesh.bounds[1][2] - mesh.bounds[0][2]
-                    st.session_state.offsets[name]["x"] = 0.0
-                    st.session_state.offsets[name]["y"] = 0.0
+                    
                     lowest_z_point = mesh.bounds[0][2]
-                    st.session_state.offsets[name]["z"] = current_z_floor - lowest_z_point
+                    target_z_shift = current_z_floor - lowest_z_point
+                    
+                    # Store variables directly into memory without blowing out active X/Y user coordinates
+                    st.session_state.offsets[name]["z"] = target_z_shift
                     current_z_floor += mesh_height
                 st.rerun()
 
@@ -113,37 +115,37 @@ if uploaded_files:
                     st.session_state.offsets[name] = {"x":0.0, "y":0.0, "z":0.0, "roll":0.0, "tumble":0.0, "spin":0.0}
                 st.rerun()
 
-            # --- NEW INTERACTIVE CLICK-TO-SELECT COMPONENT BAR ---
-            st.write("### 🖱️ Click the Part You Want to Work On:")
+            # --- DIRECT WORKSPACE INTERACTIVE SELECTION BAR ---
+            st.write("#### 🖱️ Active Focus Selection:")
             click_cols = st.columns(len(selected_names))
             for index, name in enumerate(selected_names):
                 is_active = (st.session_state.active_part == name)
-                button_label = f"🟢 {name} (Active)" if is_active else f"📦 {name}"
+                button_label = f"🟢 {name} (Selected)" if is_active else f"📦 {name}"
                 if click_cols[index].button(button_label, key=f"btn_select_{name}", use_container_width=True):
                     st.session_state.active_part = name
                     st.rerun()
 
-            # --- NEW SIDE-BY-SIDE SPLIT LAYOUT WORKSPACE ---
-            view_col1, view_col2 = st.columns([1, 1]) # Perfectly balanced split screens
+            # --- FULL SIDE-BY-SIDE SPLIT SCREEN ENVIRONMENT ---
+            workspace_col1, workspace_col2 = st.columns([1, 1.2]) # Perfect screen division to keep sliders and preview side-by-side
             
-            with view_col1:
+            with workspace_col1:
                 target_part = st.session_state.active_part
                 if target_part in processed_parts:
                     state = st.session_state.offsets[target_part]
-                    st.markdown(f"#### 🛠️ Controls: `{target_part}`")
+                    st.markdown(f"### 🛠️ Controller: `{target_part}`")
                     
-                    st.markdown("**📍 Linear Shift (mm)**")
-                    state["x"] = st.slider("Move X (Left/Right)", -200.0, 200.0, float(state["x"]), step=0.5, key=f"ws_x_{target_part}")
-                    state["y"] = st.slider("Move Y (Forward/Back)", -200.0, 200.0, float(state["y"]), step=0.5, key=f"ws_y_{target_part}")
-                    state["z"] = st.slider("Move Z (Up/Down)", -200.0, 200.0, float(state["z"]), step=0.5, key=f"ws_z_{target_part}")
+                    st.markdown("#### 📍 Linear Shift (mm)")
+                    state["x"] = st.slider("Move X (Left/Right)", -200.0, 200.0, float(state["x"]), step=0.1, key=f"ws_x_{target_part}")
+                    state["y"] = st.slider("Move Y (Forward/Back)", -200.0, 200.0, float(state["y"]), step=0.1, key=f"ws_y_{target_part}")
+                    state["z"] = st.slider("Move Z (Up/Down)", -200.0, 200.0, float(state["z"]), step=0.1, key=f"ws_z_{target_part}")
                     
-                    st.markdown("**🔄 Circular Rotation (Degrees)**")
-                    state["roll"] = st.slider("Roll (X Axis)", 0.0, 360.0, float(state["roll"]), step=1.0, key=f"ws_roll_{target_part}")
-                    state["tumble"] = st.slider("Tumble (Y Axis)", 0.0, 360.0, float(state["tumble"]), step=1.0, key=f"ws_tumble_{target_part}")
-                    state["spin"] = st.slider("Spin (Z Axis - Dial Rotation)", 0.0, 360.0, float(state["spin"]), step=1.0, key=f"ws_spin_{target_part}")
+                    st.markdown("#### 🔄 Circular Rotation (Degrees)")
+                    state["roll"] = st.slider("Roll (X Axis)", 0.0, 360.0, float(state["roll"]), step=0.5, key=f"ws_roll_{target_part}")
+                    state["tumble"] = st.slider("Tumble (Y Axis)", 0.0, 360.0, float(state["tumble"]), step=0.5, key=f"ws_tumble_{target_part}")
+                    state["spin"] = st.slider("Spin (Z Axis - Pin Index Rotation)", 0.0, 360.0, float(state["spin"]), step=0.5, key=f"ws_spin_{target_part}")
 
-            with view_col2:
-                st.markdown("#### 🔍 Live 3D Fit Assembly Preview")
+            with workspace_col2:
+                st.markdown("### 🔍 Live 3D Fit Assembly Preview")
                 try:
                     scene = trimesh.Scene()
                     active_indices = []
@@ -185,7 +187,7 @@ if uploaded_files:
 
                     html_string = f"""
                     <script type=module src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.4.0/model-viewer.min.js"></script>
-                    <model-viewer id="fit-viewer" src="data:model/gltf-binary;base64,{encoded}" ar camera-controls touch-action="none" style="width: 100%; height: 500px; background-color: #1e1e24; border-radius: 10px;">
+                    <model-viewer id="fit-viewer" src="data:model/gltf-binary;base64,{encoded}" ar camera-controls touch-action="none" style="width: 100%; height: 550px; background-color: #1e1e24; border-radius: 10px;">
                     </model-viewer>
                     
                     <script>
@@ -206,6 +208,6 @@ if uploaded_files:
                     }});
                     </script>
                     """
-                    st.components.v1.html(html_string, height=510, scrolling=False)
+                    st.components.v1.html(html_string, height=560, scrolling=False)
                 except Exception as scene_err:
                     st.error(f"Assembly render error: {scene_err}")
