@@ -3,10 +3,10 @@ import trimesh
 import io
 
 def get_bounds(mesh):
-    return {"X (Width)": mesh.extents[0], "Y (Depth)": mesh.extents[1], "Z (Height)": mesh.extents[2]}
+    return {"Width (X)": mesh.extents[0], "Depth (Y)": mesh.extents[1], "Height (Z)": mesh.extents[2]}
 
 st.set_page_config(page_title="3D Print Rescaler", layout="centered")
-st.title("🖨️ Multi-Part 3D Rescaler & Fit Preview")
+st.title("🖨️ Multi-Part Rescaler & Fit Preview")
 
 uploaded_files = st.file_uploader("Upload STL files", type=["stl"], accept_multiple_files=True)
 
@@ -15,7 +15,7 @@ if uploaded_files:
     factor = pct / 100.0
     
     scene = trimesh.Scene()
-    st.write(f"### ⚡ Live Preview ({pct}% / {factor:.4f}x)")
+    st.write(f"### ⚡ Live Metrics ({pct}% / {factor:.4f}x)")
     
     for f in uploaded_files:
         try:
@@ -26,7 +26,6 @@ if uploaded_files:
                 mesh.apply_scale(factor)
             new_dims = get_bounds(mesh)
             
-            # Add to our visual scene assembly
             scene.add_geometry(mesh)
             
             with st.expander(f"📦 {f.name}", expanded=True):
@@ -34,11 +33,23 @@ if uploaded_files:
                 with c1:
                     st.markdown("**Original Size**")
                     for k, v in orig.items():
-                        st.caption(f"{k}: {v:.1f}mm ({v/25.4:.2f}in)")
+                        st.caption(f"{k}: {v:.1f} mm ({v/25.4:.2f} in)")
                 with c2:
                     st.markdown("**New Size**")
                     for k, v in new_dims.items():
-                        st.caption(f"**{k}: {v:.1f}mm ({v/25.4:.2f}in)**")
+                        st.caption(f"**{k}: {v:.1f} mm ({v/25.4:.2f} in)**")
             
                 buf = mesh.export(file_type='stl')
-                st.download_button(label=f"💾 Download {f.name}", data
+                dl_label = f"💾 Download {f.name}"
+                out_name = f"{f.name.rsplit('.', 1)[0]}_scaled.stl"
+                st.download_button(label=dl_label, data=buf, file_name=out_name, mime="application/sla", key=f"dl_{f.name}")
+        except Exception as e:
+            st.error(f"Error {f.name}: {e}")
+
+    if len(uploaded_files) > 0:
+        try:
+            st.write("### 🔍 Live 3D Fit Assembly Preview")
+            scene_html = scene.show(viewer='glcl')
+            st.components.v1.html(scene_html, height=500, scrolling=False)
+        except Exception as scene_err:
+            st.caption("Assembly viewer updating...")
