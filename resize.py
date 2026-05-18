@@ -7,7 +7,7 @@ import numpy as np
 def get_bounds(mesh):
     x, y, z = mesh.extents[0], mesh.extents[1], mesh.extents[2]
     metrics = {"Width (X)": x, "Depth (Y)": y, "Height (Z)": z}
-    if abs(x - y) < 1.0:
+    if abs(x - y) < 1.5:  # Slightly wider threshold for printed circular features
         metrics["🔴 Diameter"] = (x + y) / 2.0
     return metrics
 
@@ -37,7 +37,7 @@ if uploaded_files:
                 }
                 
             mesh = trimesh.load(io.BytesIO(f.getvalue()), file_type='stl')
-            mesh.apply_translation(-mesh.centroid) # Force initial center baseline
+            mesh.apply_translation(-mesh.centroid) # Base centering
             
             orig = get_bounds(mesh)
             if factor != 1.0:
@@ -65,9 +65,15 @@ if uploaded_files:
                             st.caption(f"**{k}: {v:.1f} mm ({v/25.4:.2f} in)**")
             
                 buf = mesh.export(file_type='stl')
-                st.download_button(label=f"💾 Download {f.name}", data=buf, file_name=f"{f.name.rsplit('.', 1)[0]}_scaled.stl", mime="application/sla", key=f"dl_{f.name}")
+                st.download_button(
+                    label=f"💾 Download {f.name}", 
+                    data=buf, 
+                    file_name=f"{f.name.rsplit('.', 1)[0]}_scaled.stl", 
+                    mime="application/sla", 
+                    key=f"dl_{f.name}"
+                )
         except Exception as e:
-            st.error(f"Error {f.name}: {e}")
+            st.error(f"Error loading {f.name}: {e}")
 
     if processed_parts:
         st.write("---")
@@ -79,11 +85,10 @@ if uploaded_files:
         )
         
         if selected_names:
-            # --- INTELLIGENT AUTOMATIC STACK BUTTON ---
             col_btn1, col_btn2 = st.columns(2)
             
             if col_btn1.button("🎯 Auto-Align Stack (Match Joints)", use_container_width=True):
-                # Sort parts by height so we stack smaller/flatter items (like lids) on taller bodies
+                # Sort parts by height bounds to layer them cleanly from base to cap
                 sorted_by_height = sorted(selected_names, key=lambda n: processed_parts[n].bounds[1][2] - processed_parts[n].bounds[0][2])
                 
                 current_z_floor = 0.0
@@ -91,16 +96,13 @@ if uploaded_files:
                     mesh = processed_parts[name]
                     mesh_height = mesh.bounds[1][2] - mesh.bounds[0][2]
                     
-                    # Zero out positions to align centers perfectly across X and Y axes
                     st.session_state.offsets[name]["x"] = 0.0
                     st.session_state.offsets[name]["y"] = 0.0
                     
-                    # Calculate vertical drop translation to seat it precisely on top of the last layer
                     lowest_z_point = mesh.bounds[0][2]
                     target_z_shift = current_z_floor - lowest_z_point
                     st.session_state.offsets[name]["z"] = target_z_shift
                     
-                    # Advance floor tracking level for the next piece in the assembly
                     current_z_floor += mesh_height
                 st.rerun()
 
@@ -124,10 +126,10 @@ if uploaded_files:
                 
                 st.sidebar.markdown("### 🔄 Circular Rotation (Degrees)")
                 state["roll"] = st.sidebar.slider("Roll (X Axis)", 0.0, 360.0, float(state["roll"]), step=1.0, key=f"sld_roll_{target_part}")
-                st.sidebar.slider("Tumble (Y Axis)", 0.0, 360.0, float(state["tumble"]), step=1.0, key=f"sld_tumble_{target_part}")
+                state["tumble"] = st.sidebar.slider("Tumble (Y Axis)", 0.0, 360.0, float(state["tumble"]), step=1.0, key=f"sld_tumble_{target_part}")
                 state["spin"] = st.sidebar.slider("Spin (Z Axis - Dial Rotation)", 0.0, 360.0, float(state["spin"]), step=1.0, key=f"sld_spin_{target_part}")
 
-            # Compile Full View Scene
+            # Compile Full View Scene Safely
             try:
                 scene = trimesh.Scene()
                 active_indices = []
@@ -150,7 +152,14 @@ if uploaded_files:
                     scene.add_geometry(temp_mesh, node_name=f"part_{mesh_idx}")
                 
                 st.write(f"### 🔍 Live 3D Fit Assembly Preview")
-                glb_data = scene.export(file_type='glb')
+                
+                # Fixed GLB dictionary export breakdown error natively
+                export_data = scene.export(file_type='glb')
+                if isinstance(export_data, dict):
+                    glb_data = export_data.get('model', b'') or export_data.get('glb', b'')
+                else:
+                    glb_data = export_data
+                    
                 encoded = base64.b64encode(glb_data).decode()
                 
                 color_scripts = ""
