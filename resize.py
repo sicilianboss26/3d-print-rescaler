@@ -17,7 +17,6 @@ st.title("🖨️ 3D Print Alignment & Dimension Studio")
 uploaded_files = st.file_uploader("Upload STL files", type=["stl"], accept_multiple_files=True)
 
 if uploaded_files:
-    # --- FIXED STATE MEMORY STORAGE ---
     if "offsets" not in st.session_state:
         st.session_state.offsets = {}
     if "initial_centers" not in st.session_state:
@@ -90,110 +89,118 @@ if uploaded_files:
         )
         
         if selected_names:
-            col_btn1, col_btn2 = st.columns(2)
-            
-            if col_btn1.button("🎯 Auto-Align Stack (Match Joints)", use_container_width=True):
-                sorted_by_height = sorted(selected_names, key=lambda n: processed_parts[n].bounds[1][2] - processed_parts[n].bounds[0][2])
+            # --- FIXED APPMAP FRAGMENT LOOP ---
+            # Using a fragment wrapper isolates rendering so slider updates don't reload the camera view frame
+            @st.fragment
+            def render_control_and_preview():
+                col_btn1, col_btn2 = st.columns(2)
                 
-                current_z_floor = 0.0
-                for name in sorted_by_height:
-                    mesh = processed_parts[name]
-                    mesh_height = mesh.bounds[1][2] - mesh.bounds[0][2]
-                    
-                    st.session_state.offsets[name]["x"] = 0.0
-                    st.session_state.offsets[name]["y"] = 0.0
-                    
-                    lowest_z_point = mesh.bounds[0][2]
-                    target_z_shift = current_z_floor - lowest_z_point
-                    st.session_state.offsets[name]["z"] = target_z_shift
-                    
-                    current_z_floor += mesh_height
-                st.rerun()
+                if col_btn1.button("🎯 Auto-Align Stack (Match Joints)", use_container_width=True):
+                    sorted_by_height = sorted(selected_names, key=lambda n: processed_parts[n].bounds[1][2] - processed_parts[n].bounds[0][2])
+                    current_z_floor = 0.0
+                    for name in sorted_by_height:
+                        mesh = processed_parts[name]
+                        mesh_height = mesh.bounds[1][2] - mesh.bounds[0][2]
+                        st.session_state.offsets[name]["x"] = 0.0
+                        st.session_state.offsets[name]["y"] = 0.0
+                        lowest_z_point = mesh.bounds[0][2]
+                        st.session_state.offsets[name]["z"] = current_z_floor - lowest_z_point
+                        current_z_floor += mesh_height
+                    st.rerun()
 
-            if col_btn2.button("🔄 Reset Layout to Center", use_container_width=True):
-                for name in selected_names:
-                    st.session_state.offsets[name] = {"x":0.0, "y":0.0, "z":0.0, "roll":0.0, "tumble":0.0, "spin":0.0}
-                st.rerun()
+                if col_btn2.button("🔄 Reset Layout to Center", use_container_width=True):
+                    for name in selected_names:
+                        st.session_state.offsets[name] = {"x":0.0, "y":0.0, "z":0.0, "roll":0.0, "tumble":0.0, "spin":0.0}
+                    st.rerun()
 
-            # --- SIDEBAR FINE TUNER PANEL WITH MEMORY RETENTION ---
-            st.sidebar.header("🛠️ Round Parts Axis Controller")
-            target_part = st.sidebar.selectbox("Select active part to adjust:", options=selected_names)
-            
-            if target_part:
-                # Read directly from session state to prevent value dropped on reload loop
-                current_x = float(st.session_state.offsets[target_part]["x"])
-                current_y = float(st.session_state.offsets[target_part]["y"])
-                current_z = float(st.session_state.offsets[target_part]["z"])
+                # --- SIDEBAR FINE TUNER PANEL ---
+                st.sidebar.header("🛠️ Round Parts Axis Controller")
+                target_part = st.sidebar.selectbox("Select active part to adjust:", options=selected_names)
                 
-                current_roll = float(st.session_state.offsets[target_part]["roll"])
-                current_tumble = float(st.session_state.offsets[target_part]["tumble"])
-                current_spin = float(st.session_state.offsets[target_part]["spin"])
-                
-                st.sidebar.markdown(f"**Modifying Shape:** `{target_part}`")
-                
-                st.sidebar.markdown("### 📍 Linear Shift (mm)")
-                st.session_state.offsets[target_part]["x"] = st.sidebar.slider("Move X (Left/Right)", -200.0, 200.0, current_x, step=0.5, key=f"sld_x_{target_part}")
-                st.session_state.offsets[target_part]["y"] = st.sidebar.slider("Move Y (Forward/Back)", -200.0, 200.0, current_y, step=0.5, key=f"sld_y_{target_part}")
-                st.session_state.offsets[target_part]["z"] = st.sidebar.slider("Move Z (Up/Down)", -200.0, 200.0, current_z, step=0.5, key=f"sld_z_{target_part}")
-                
-                st.sidebar.markdown("### 🔄 Circular Rotation (Degrees)")
-                st.session_state.offsets[target_part]["roll"] = st.sidebar.slider("Roll (X Axis)", 0.0, 360.0, current_roll, step=1.0, key=f"sld_roll_{target_part}")
-                st.session_state.offsets[target_part]["tumble"] = st.sidebar.slider("Tumble (Y Axis)", 0.0, 360.0, current_tumble, step=1.0, key=f"sld_tumble_{target_part}")
-                st.session_state.offsets[target_part]["spin"] = st.sidebar.slider("Spin (Z Axis - Dial Rotation)", 0.0, 360.0, current_spin, step=1.0, key=f"sld_spin_{target_part}")
+                if target_part:
+                    state = st.session_state.offsets[target_part]
+                    st.sidebar.markdown(f"**Modifying Shape:** `{target_part}`")
+                    
+                    st.sidebar.markdown("### 📍 Linear Shift (mm)")
+                    state["x"] = st.sidebar.slider("Move X (Left/Right)", -200.0, 200.0, float(state["x"]), step=0.5, key=f"sld_x_{target_part}")
+                    state["y"] = st.sidebar.slider("Move Y (Forward/Back)", -200.0, 200.0, float(state["y"]), step=0.5, key=f"sld_y_{target_part}")
+                    state["z"] = st.sidebar.slider("Move Z (Up/Down)", -200.0, 200.0, float(state["z"]), step=0.5, key=f"sld_z_{target_part}")
+                    
+                    st.sidebar.markdown("### 🔄 Circular Rotation (Degrees)")
+                    state["roll"] = st.sidebar.slider("Roll (X Axis)", 0.0, 360.0, float(state["roll"]), step=1.0, key=f"sld_roll_{target_part}")
+                    state["tumble"] = st.sidebar.slider("Tumble (Y Axis)", 0.0, 360.0, float(state["tumble"]), step=1.0, key=f"sld_tumble_{target_part}")
+                    state["spin"] = st.sidebar.slider("Spin (Z Axis - Dial Rotation)", 0.0, 360.0, float(state["spin"]), step=1.0, key=f"sld_spin_{target_part}")
 
-            # Compile Full View Scene Safely
-            try:
-                scene = trimesh.Scene()
-                active_indices = []
-                
-                for name in selected_names:
-                    mesh_idx = file_name_map[name]
-                    active_indices.append(mesh_idx)
+                try:
+                    scene = trimesh.Scene()
+                    active_indices = []
                     
-                    temp_mesh = processed_parts[name].copy()
-                    state = st.session_state.offsets[name]
-                    
-                    if state["roll"] != 0:
-                        temp_mesh.apply_transform(trimesh.transformations.rotation_matrix(np.radians(state["roll"]), [1, 0, 0]))
-                    if state["tumble"] != 0:
-                        temp_mesh.apply_transform(trimesh.transformations.rotation_matrix(np.radians(state["tumble"]), [0, 1, 0]))
-                    if state["spin"] != 0:
-                        temp_mesh.apply_transform(trimesh.transformations.rotation_matrix(np.radians(state["spin"]), [0, 0, 1]))
+                    for name in selected_names:
+                        mesh_idx = file_name_map[name]
+                        active_indices.append(mesh_idx)
                         
-                    temp_mesh.apply_translation([state["x"], state["y"], state["z"]])
-                    scene.add_geometry(temp_mesh, node_name=f"part_{mesh_idx}")
-                
-                st.write(f"### 🔍 Live 3D Fit Assembly Preview")
-                
-                export_data = scene.export(file_type='glb')
-                if isinstance(export_data, dict):
-                    glb_data = export_data.get('model', b'') or export_data.get('glb', b'')
-                else:
-                    glb_data = export_data
+                        temp_mesh = processed_parts[name].copy()
+                        state = st.session_state.offsets[name]
+                        
+                        if state["roll"] != 0:
+                            temp_mesh.apply_transform(trimesh.transformations.rotation_matrix(np.radians(state["roll"]), [1, 0, 0]))
+                        if state["tumble"] != 0:
+                            temp_mesh.apply_transform(trimesh.transformations.rotation_matrix(np.radians(state["tumble"]), [0, 1, 0]))
+                        if state["spin"] != 0:
+                            temp_mesh.apply_transform(trimesh.transformations.rotation_matrix(np.radians(state["spin"]), [0, 0, 1]))
+                            
+                        temp_mesh.apply_translation([state["x"], state["y"], state["z"]])
+                        scene.add_geometry(temp_mesh, node_name=f"part_{mesh_idx}")
                     
-                encoded = base64.b64encode(glb_data).decode()
-                
-                color_scripts = ""
-                for display_order, mesh_idx in enumerate(active_indices):
-                    pick_color = colors[mesh_idx % len(colors)]
-                    color_scripts += f"""
-                    const mat_{display_order} = modelViewer.model.materials[{display_order}];
-                    if (mat_{display_order}) {{
-                        mat_{display_order}.pbrMetallicRoughness.setBaseColorFactor("{pick_color}");
-                    }}
-                    """
+                    st.write(f"### 🔍 Live 3D Fit Assembly Preview")
+                    
+                    export_data = scene.export(file_type='glb')
+                    if isinstance(export_data, dict):
+                        glb_data = export_data.get('model', b'') or export_data.get('glb', b'')
+                    else:
+                        glb_data = export_data
+                        
+                    encoded = base64.b64encode(glb_data).decode()
+                    
+                    color_scripts = ""
+                    for display_order, mesh_idx in enumerate(active_indices):
+                        pick_color = colors[mesh_idx % len(colors)]
+                        color_scripts += f"""
+                        const mat_{display_order} = modelViewer.model.materials[{display_order}];
+                        if (mat_{display_order}) {{
+                            mat_{display_order}.pbrMetallicRoughness.setBaseColorFactor("{pick_color}");
+                        }}
+                        """
 
-                html_string = f"""
-                <script type=module src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.4.0/model-viewer.min.js"></script>
-                <model-viewer id="fit-viewer" src="data:model/gltf-binary;base64,{encoded}" ar camera-controls touch-action="none" style="width: 100%; height: 500px; background-color: #1e1e24; border-radius: 10px;"></model-viewer>
-                
-                <script>
-                const modelViewer = document.querySelector("#fit-viewer");
-                modelViewer.addEventListener("load", () => {{
-                    {color_scripts}
-                }});
-                </script>
-                """
-                st.components.v1.html(html_string, height=510, scrolling=False)
-            except Exception as scene_err:
-                st.error(f"Assembly render error: {scene_err}")
+                    # Added camera-orbit persistence scripts to retain viewing position on changes
+                    html_string = f"""
+                    <script type=module src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.4.0/model-viewer.min.js"></script>
+                    <model-viewer id="fit-viewer" src="data:model/gltf-binary;base64,{encoded}" ar camera-controls touch-action="none" style="width: 100%; height: 500px; background-color: #1e1e24; border-radius: 10px;">
+                    </model-viewer>
+                    
+                    <script>
+                    const modelViewer = document.querySelector("#fit-viewer");
+                    
+                    // Pull last known orientation data from local memory storage if it exists
+                    const oldOrbit = localStorage.getItem("feeder_viewer_orbit");
+                    const oldTarget = localStorage.getItem("feeder_viewer_target");
+                    if (oldOrbit) modelViewer.cameraOrbit = oldOrbit;
+                    if (oldTarget) modelViewer.cameraTarget = oldTarget;
+
+                    // Track changes to the viewer position live
+                    modelViewer.addEventListener("camera-change", () => {{
+                        localStorage.setItem("feeder_viewer_orbit", modelViewer.getCameraOrbit().toString());
+                        localStorage.setItem("feeder_viewer_target", modelViewer.getCameraTarget().toString());
+                    }});
+
+                    modelViewer.addEventListener("load", () => {{
+                        {color_scripts}
+                    }});
+                    </script>
+                    """
+                    st.components.v1.html(html_string, height=510, scrolling=False)
+                except Exception as scene_err:
+                    st.error(f"Assembly render error: {scene_err}")
+
+            # Run the isolated preview space
+            render_control_and_preview()
