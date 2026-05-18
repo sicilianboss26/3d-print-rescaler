@@ -12,13 +12,17 @@ st.title("🖨️ Multi-Part Rescaler & Fit Preview")
 uploaded_files = st.file_uploader("Upload STL files", type=["stl"], accept_multiple_files=True)
 
 if uploaded_files:
+    # Main Scaling Control
     pct = st.number_input("Scale %", min_value=1.0, max_value=1000.0, value=100.0, step=5.0)
     factor = pct / 100.0
     
     scene = trimesh.Scene()
     st.write(f"### ⚡ Live Metrics ({pct}% / {factor:.4f}x)")
     
-    for f in uploaded_files:
+    # Sidebar section for manual fit alignment
+    st.sidebar.header("🕹️ Part Alignment (Fit Testing)")
+    
+    for i, f in enumerate(uploaded_files):
         try:
             mesh = trimesh.load(io.BytesIO(f.getvalue()), file_type='stl')
             orig = get_bounds(mesh)
@@ -27,6 +31,16 @@ if uploaded_files:
                 mesh.apply_scale(factor)
             new_dims = get_bounds(mesh)
             
+            # Create individual position adjustments for each model in the sidebar
+            st.sidebar.markdown(f"**📍 {f.name}**")
+            move_x = st.sidebar.slider(f"X Move", -200.0, 200.0, 0.0, step=1.0, key=f"x_{i}")
+            move_y = st.sidebar.slider(f"Y Move", -200.0, 200.0, 0.0, step=1.0, key=f"y_{i}")
+            move_z = st.sidebar.slider(f"Z Move", -200.0, 200.0, 0.0, step=1.0, key=f"z_{i}")
+            
+            # Apply the translation offset to this specific mesh
+            mesh.apply_translation([move_x, move_y, move_z])
+            
+            # Add shifted mesh to visual scene
             scene.add_geometry(mesh)
             
             with st.expander(f"📦 {f.name}", expanded=True):
@@ -50,11 +64,9 @@ if uploaded_files:
     if len(uploaded_files) > 0:
         try:
             st.write("### 🔍 Live 3D Fit Assembly Preview")
-            # Export assembly scene as a compiled raw binary GLB stream
             glb_data = scene.export(file_type='glb')
             encoded = base64.b64encode(glb_data).decode()
             
-            # Universal HTML5 3D component
             html_string = f"""
             <script type=module src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.4.0/model-viewer.min.js"></script>
             <model-viewer src="data:model/gltf-binary;base64,{encoded}" ar camera-controls touch-action="none" style="width: 100%; height: 500px; background-color: #f0f2f6; border-radius: 10px;"></model-viewer>
