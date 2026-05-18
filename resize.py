@@ -7,7 +7,7 @@ def get_bounds(mesh):
     return {"Width (X)": mesh.extents[0], "Depth (Y)": mesh.extents[1], "Height (Z)": mesh.extents[2]}
 
 st.set_page_config(page_title="3D Print Rescaler", layout="centered")
-st.title("🖨️ Multi-Part Rescaler & Selective Fit")
+st.title("🖨️ Multi-Part Rescaler & Joint Alignment")
 
 uploaded_files = st.file_uploader("Upload STL files", type=["stl"], accept_multiple_files=True)
 
@@ -17,19 +17,15 @@ if uploaded_files:
     
     st.write(f"### ⚡ Live Metrics ({pct}% / {factor:.4f}x)")
     
-    # Store processed meshes and names so we can select them later
     processed_parts = {}
     file_name_map = {}
-    
-    # High-contrast hex palette for the dark canvas view
     colors = ["#FF5733", "#33FF57", "#3357FF", "#F3FF33", "#FF33F3", "#33FFF0"]
     
     for i, f in enumerate(uploaded_files):
         try:
             mesh = trimesh.load(io.BytesIO(f.getvalue()), file_type='stl')
             
-            # Auto-align the internal center of this mesh to absolute (0,0,0)
-            mesh.visual.face_colors = [255, 255, 255, 255]
+            # 1. Bring everything to a shared starting baseline so they aren't lost in space
             mesh.apply_translation(-mesh.centroid)
             
             orig = get_bounds(mesh)
@@ -37,7 +33,6 @@ if uploaded_files:
                 mesh.apply_scale(factor)
             new_dims = get_bounds(mesh)
             
-            # Save to dictionary for layout usage
             processed_parts[f.name] = mesh
             file_name_map[f.name] = i
             
@@ -53,20 +48,17 @@ if uploaded_files:
                         st.caption(f"**{k}: {v:.1f} mm ({v/25.4:.2f} in)**")
             
                 buf = mesh.export(file_type='stl')
-                dl_label = f"💾 Download {f.name}"
-                out_name = f"{f.name.rsplit('.', 1)[0]}_scaled.stl"
-                st.download_button(label=dl_label, data=buf, file_name=out_name, mime="application/sla", key=f"dl_{f.name}")
+                st.download_button(label=f"💾 Download {f.name}", data=buf, file_name=f"{f.name.rsplit('.', 1)[0]}_scaled.stl", mime="application/sla", key=f"dl_{f.name}")
         except Exception as e:
             st.error(f"Error {f.name}: {e}")
 
-    # Interactive fit menu selection
     if processed_parts:
         st.write("---")
-        st.write("### 🤝 Select Parts to Connect")
+        st.write("### 🤝 Select Parts to Align")
         selected_names = st.multiselect(
-            "Choose the files you want to snap together:",
+            "Choose files to put on the table:",
             options=list(processed_parts.keys()),
-            default=list(processed_parts.keys())[:2] # Defaults to the first two uploaded files
+            default=list(processed_parts.keys())[:2]
         )
         
         if selected_names:
@@ -74,25 +66,38 @@ if uploaded_files:
                 scene = trimesh.Scene()
                 active_indices = []
                 
-                # Only combine the specific files picked in the menu
+                st.sidebar.header("🕹️ Joint Alignment Sliders")
+                st.sidebar.caption("Manually slide the parts into position to check clearances:")
+                
                 for name in selected_names:
                     idx = file_name_map[name]
                     active_indices.append(idx)
-                    scene.add_geometry(processed_parts[name], node_name=f"part_{idx}")
+                    
+                    # Create a copy so shifting around doesn't alter the original download file
+                    temp_mesh = processed_parts[name].copy()
+                    
+                    # Add dedicated fine-tuning movement sliders for this specific part in the sidebar
+                    st.sidebar.markdown(f"**📍 Adjust: {name}**")
+                    x_adj = st.sidebar.slider(f"Move X", -150.0, 150.0, 0.0, step=0.5, key=f"x_slide_{idx}")
+                    y_adj = st.sidebar.slider(f"Move Y", -150.0, 150.0, 0.0, step=0.5, key=f"y_slide_{idx}")
+                    z_adj = st.sidebar.slider(f"Move Z", -150.0, 150.0, 0.0, step=0.5, key=f"z_slide_{idx}")
+                    
+                    # Slide it into its actual placement position
+                    temp_mesh.apply_translation([x_adj, y_adj, z_adj])
+                    scene.add_geometry(temp_mesh, node_name=f"part_{idx}")
                 
-                st.write(f"### 🔍 Live 3D Fit Assembly ({len(selected_names)} Parts Connected)")
+                st.write(f"### 🔍 Live 3D Fit Assembly Preview")
                 
                 glb_data = scene.export(file_type='glb')
                 encoded = base64.b64encode(glb_data).decode()
                 
-                # Apply the distinct colors using the map index tracking
                 color_scripts = ""
                 for display_order, mesh_idx in enumerate(active_indices):
                     pick_color = colors[mesh_idx % len(colors)]
                     color_scripts += f"""
-                    const material_{display_order} = modelViewer.model.materials[{display_order}];
-                    if (material_{display_order}) {{
-                        material_{display_order}.pbrMetallicRoughness.setBaseColorFactor("{pick_color}");
+                    const mat_{display_order} = modelViewer.model.materials[{display_order}];
+                    if (mat_{display_order}) {{
+                        mat_{display_order}.pbrMetallicRoughness.setBaseColorFactor("{pick_color}");
                     }}
                     """
 
