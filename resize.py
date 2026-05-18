@@ -50,14 +50,14 @@ if uploaded_files:
     if len(uploaded_files) > 0:
         try:
             st.write("### 🔍 Live 3D Fit Assembly Preview")
-            # Export assembly scene as an embedded web GLTF data stream
-            gltf_data = scene.export(file_type='gltf')
-            encoded = base64.b64encode(gltf_data).decode()
+            # Export assembly scene as a compiled raw binary GLB stream
+            glb_data = scene.export(file_type='glb')
+            encoded = base64.b64encode(glb_data).decode()
             
-            # Use a robust, universal HTML5 canvas deployment to view the model
+            # Universal HTML5 3D component
             html_string = f"""
             <script type=module src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.4.0/model-viewer.min.js"></script>
-            <model-viewer src="data:model/gltf+json;base64,{encoded}" ar camera-controls touch-action="none" style="width: 100%; height: 500px; background-color: #f0f2f6; border-radius: 10px;"></model-viewer>
+            <model-viewer src="data:model/gltf-binary;base64,{encoded}" ar camera-controls touch-action="none" style="width: 100%; height: 500px; background-color: #f0f2f6; border-radius: 10px;"></model-viewer>
             """
             st.components.v1.html(html_string, height=510, scrolling=False)
         except Exception as scene_err:
