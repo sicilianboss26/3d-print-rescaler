@@ -89,8 +89,7 @@ if uploaded_files:
         )
         
         if selected_names:
-            # --- FIXED APPMAP FRAGMENT LOOP ---
-            # Using a fragment wrapper isolates rendering so slider updates don't reload the camera view frame
+            # Isolated rendering block on the main page
             @st.fragment
             def render_control_and_preview():
                 col_btn1, col_btn2 = st.columns(2)
@@ -113,23 +112,26 @@ if uploaded_files:
                         st.session_state.offsets[name] = {"x":0.0, "y":0.0, "z":0.0, "roll":0.0, "tumble":0.0, "spin":0.0}
                     st.rerun()
 
-                # --- SIDEBAR FINE TUNER PANEL ---
-                st.sidebar.header("🛠️ Round Parts Axis Controller")
-                target_part = st.sidebar.selectbox("Select active part to adjust:", options=selected_names)
+                # CRITICAL FIX: Moved controls out of st.sidebar so they run inside the fragment block safely
+                st.write("### 🛠️ Round Parts Axis Controller")
+                target_part = st.selectbox("Select active part to adjust:", options=selected_names)
                 
                 if target_part:
                     state = st.session_state.offsets[target_part]
-                    st.sidebar.markdown(f"**Modifying Shape:** `{target_part}`")
+                    st.markdown(f"Adjusting: `{target_part}`")
                     
-                    st.sidebar.markdown("### 📍 Linear Shift (mm)")
-                    state["x"] = st.sidebar.slider("Move X (Left/Right)", -200.0, 200.0, float(state["x"]), step=0.5, key=f"sld_x_{target_part}")
-                    state["y"] = st.sidebar.slider("Move Y (Forward/Back)", -200.0, 200.0, float(state["y"]), step=0.5, key=f"sld_y_{target_part}")
-                    state["z"] = st.sidebar.slider("Move Z (Up/Down)", -200.0, 200.0, float(state["z"]), step=0.5, key=f"sld_z_{target_part}")
-                    
-                    st.sidebar.markdown("### 🔄 Circular Rotation (Degrees)")
-                    state["roll"] = st.sidebar.slider("Roll (X Axis)", 0.0, 360.0, float(state["roll"]), step=1.0, key=f"sld_roll_{target_part}")
-                    state["tumble"] = st.sidebar.slider("Tumble (Y Axis)", 0.0, 360.0, float(state["tumble"]), step=1.0, key=f"sld_tumble_{target_part}")
-                    state["spin"] = st.sidebar.slider("Spin (Z Axis - Dial Rotation)", 0.0, 360.0, float(state["spin"]), step=1.0, key=f"sld_spin_{target_part}")
+                    # Split sliders into two clean columns right above the preview
+                    sc1, sc2 = st.columns(2)
+                    with sc1:
+                        st.markdown("**📍 Linear Position (mm)**")
+                        state["x"] = st.slider("Move X (Left/Right)", -200.0, 200.0, float(state["x"]), step=0.5, key=f"sld_x_{target_part}")
+                        state["y"] = st.slider("Move Y (Forward/Back)", -200.0, 200.0, float(state["y"]), step=0.5, key=f"sld_y_{target_part}")
+                        state["z"] = st.slider("Move Z (Up/Down)", -200.0, 200.0, float(state["z"]), step=0.5, key=f"sld_z_{target_part}")
+                    with sc2:
+                        st.markdown("**🔄 Circular Rotation (Degrees)**")
+                        state["roll"] = st.slider("Roll (X Axis)", 0.0, 360.0, float(state["roll"]), step=1.0, key=f"sld_roll_{target_part}")
+                        state["tumble"] = st.slider("Tumble (Y Axis)", 0.0, 360.0, float(state["tumble"]), step=1.0, key=f"sld_tumble_{target_part}")
+                        state["spin"] = st.slider("Spin (Z Axis - Dial)", 0.0, 360.0, float(state["spin"]), step=1.0, key=f"sld_spin_{target_part}")
 
                 try:
                     scene = trimesh.Scene()
@@ -172,7 +174,6 @@ if uploaded_files:
                         }}
                         """
 
-                    # Added camera-orbit persistence scripts to retain viewing position on changes
                     html_string = f"""
                     <script type=module src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.4.0/model-viewer.min.js"></script>
                     <model-viewer id="fit-viewer" src="data:model/gltf-binary;base64,{encoded}" ar camera-controls touch-action="none" style="width: 100%; height: 500px; background-color: #1e1e24; border-radius: 10px;">
@@ -181,13 +182,11 @@ if uploaded_files:
                     <script>
                     const modelViewer = document.querySelector("#fit-viewer");
                     
-                    // Pull last known orientation data from local memory storage if it exists
                     const oldOrbit = localStorage.getItem("feeder_viewer_orbit");
                     const oldTarget = localStorage.getItem("feeder_viewer_target");
                     if (oldOrbit) modelViewer.cameraOrbit = oldOrbit;
                     if (oldTarget) modelViewer.cameraTarget = oldTarget;
 
-                    // Track changes to the viewer position live
                     modelViewer.addEventListener("camera-change", () => {{
                         localStorage.setItem("feeder_viewer_orbit", modelViewer.getCameraOrbit().toString());
                         localStorage.setItem("feeder_viewer_target", modelViewer.getCameraTarget().toString());
@@ -202,5 +201,4 @@ if uploaded_files:
                 except Exception as scene_err:
                     st.error(f"Assembly render error: {scene_err}")
 
-            # Run the isolated preview space
             render_control_and_preview()
