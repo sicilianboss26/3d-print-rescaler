@@ -8,12 +8,11 @@ def get_bounds(mesh):
     return {"Width (X)": mesh.extents[0], "Depth (Y)": mesh.extents[1], "Height (Z)": mesh.extents[2]}
 
 st.set_page_config(page_title="3D Print Rescaler", layout="centered")
-st.title("🖨️ Mobile-Touch Fit Previewer")
+st.title("🖨️ 3D Print Alignment Studio")
 
 uploaded_files = st.file_uploader("Upload STL files", type=["stl"], accept_multiple_files=True)
 
 if uploaded_files:
-    # Initialize session tracking for translations and rotations so clicks persist
     if "offsets" not in st.session_state:
         st.session_state.offsets = {}
     
@@ -26,15 +25,13 @@ if uploaded_files:
     
     for i, f in enumerate(uploaded_files):
         try:
-            # Setup stable tracking keys for each file
             if f.name not in st.session_state.offsets:
                 st.session_state.offsets[f.name] = {
-                    "x": 0.0, "y": 0.0, "z": 0.0,
-                    "roll": 0.0, "tumble": 0.0, "spin": 0.0
+                    "x": 0.0, "y": 0.0, "z": 0.0, "roll": 0.0, "tumble": 0.0, "spin": 0.0
                 }
                 
             mesh = trimesh.load(io.BytesIO(f.getvalue()), file_type='stl')
-            mesh.apply_translation(-mesh.centroid)  # Center baseline
+            mesh.apply_translation(-mesh.centroid)
             
             orig = get_bounds(mesh)
             if factor != 1.0:
@@ -47,7 +44,7 @@ if uploaded_files:
             with st.expander(f"📦 {f.name}", expanded=False):
                 c1, c2 = st.columns(2)
                 with c1:
-                    st.markdown("**Original Size**")
+                    st.markdown("**Original**")
                     for k, v in orig.items():
                         st.caption(f"{k}: {v:.1f} mm ({v/25.4:.2f} in)")
                 with c2:
@@ -62,82 +59,51 @@ if uploaded_files:
 
     if processed_parts:
         st.write("---")
-        st.write("### 🤝 Target Match Assembly")
         
+        # Main table selector
         selected_names = st.multiselect(
-            "Select parts to match up on the table:",
+            "Select parts to display on the assembly table:",
             options=list(processed_parts.keys()),
             default=list(processed_parts.keys())[:2]
         )
         
         if selected_names:
-            st.write("### 🕹️ Quick Touch Alignment Menu")
-            st.caption("Tap a part name to open its quick rotation and nudge buttons:")
+            # --- CONSOLIDATED SIDEBAR COMPONENT PANEL ---
+            st.sidebar.header("🛠️ Part Transform Panel")
+            target_part = st.sidebar.selectbox("Select active part to adjust:", options=selected_names)
             
-            # Create a clean tab menu for editing positions cleanly on a phone layout
-            part_tabs = st.tabs([f"📍 {name}" for name in selected_names])
-            
-            for idx, name in enumerate(selected_names):
-                with part_tabs[idx]:
-                    state = st.session_state.offsets[name]
-                    
-                    # 180 Degree Quick Flips
-                    st.markdown("**Quick 180° Flips (Fix Backwards Parts):**")
-                    cb1, cb2, cb3 = st.columns(3)
-                    with cb1:
-                        if st.button("Flip X (180°)", key=f"fx_{name}"):
-                            state["roll"] = (state["roll"] + 180) % 360
-                            st.rerun()
-                    with cb2:
-                        if st.button("Flip Y (180°)", key=f"fy_{name}"):
-                            state["tumble"] = (state["tumble"] + 180) % 360
-                            st.rerun()
-                    with cb3:
-                        if st.button("Flip Z (180°)", key=f"fz_{name}"):
-                            state["spin"] = (state["spin"] + 180) % 360
-                            st.rerun()
-                            
-                    # 90 Degree Rotation Adjustments
-                    st.markdown("**Rotate 90° Steps:**")
-                    r1, r2, r3 = st.columns(3)
-                    with r1:
-                        if st.button("🔄 Roll +90°", key=f"r90_{name}"):
-                            state["roll"] = (state["roll"] + 90) % 360
-                            st.rerun()
-                    with r2:
-                        if st.button("🔄 Tumble +90°", key=f"t90_{name}"):
-                            state["tumble"] = (state["tumble"] + 90) % 360
-                            st.rerun()
-                    with r3:
-                        if st.button("🔄 Spin +90°", key=f"s90_{name}"):
-                            state["spin"] = (state["spin"] + 90) % 360
-                            st.rerun()
+            if target_part:
+                state = st.session_state.offsets[target_part]
+                st.sidebar.markdown(f"**Modifying:** `{target_part}`")
+                
+                # 180 Flips
+                st.sidebar.markdown("**Quick 180° Flips:**")
+                fx, fy, fz = st.sidebar.columns(3)
+                if fx.button("Flip X", key="side_fx"):
+                    state["roll"] = (state["roll"] + 180) % 360
+                    st.rerun()
+                if fy.button("Flip Y", key="side_fy"):
+                    state["tumble"] = (state["tumble"] + 180) % 360
+                    st.rerun()
+                if fz.button("Flip Z", key="side_fz"):
+                    state["spin"] = (state["spin"] + 180) % 360
+                    st.rerun()
+                
+                # Nudge steps
+                st.sidebar.markdown("**Nudge Position (mm):**")
+                nx1, nx2 = st.sidebar.columns(2)
+                if nx1.button("⬅️ X -10", key="side_xm"): state["x"] -= 10.0; st.rerun()
+                if nx2.button("➡️ X +10", key="side_xp"): state["x"] += 10.0; st.rerun()
+                
+                nz1, nz2 = st.sidebar.columns(2)
+                if nz1.button("⬇️ Z -10", key="side_zm"): state["z"] -= 10.0; st.rerun()
+                if nz2.button("⬆️ Z +10", key="side_zp"): state["z"] += 10.0; st.rerun()
+                
+                if st.sidebar.button("🎯 Reset Part to Center", key="side_rst"):
+                    st.session_state.offsets[target_part] = {"x":0.0, "y":0.0, "z":0.0, "roll":0.0, "tumble":0.0, "spin":0.0}
+                    st.rerun()
 
-                    # Precise Nudge/Position Buttons
-                    st.markdown("**Position Nudge Buttons (mm):**")
-                    n1, n2, n3, n4 = st.columns(4)
-                    with n1:
-                        if st.button("⬅️ X -10", key=f"xm_{name}"):
-                            state["x"] -= 10.0
-                            st.rerun()
-                    with n2:
-                        if st.button("➡️ X +10", key=f"xp_{name}"):
-                            state["x"] += 10.0
-                            st.rerun()
-                    with n3:
-                        if st.button("⬇️ Z -10", key=f"zm_{name}"):
-                            state["z"] -= 10.0
-                            st.rerun()
-                    with n4:
-                        if st.button("⬆️ Z +10", key=f"zp_{name}"):
-                            state["z"] += 10.0
-                            st.rerun()
-
-                    if st.button("🎯 Reset to Center", key=f"rst_{name}"):
-                        st.session_state.offsets[name] = {"x":0.0, "y":0.0, "z":0.0, "roll":0.0, "tumble":0.0, "spin":0.0}
-                        st.rerun()
-
-            # Compile Scene using stored Touch state variables
+            # Compile Scene
             try:
                 scene = trimesh.Scene()
                 active_indices = []
@@ -149,7 +115,6 @@ if uploaded_files:
                     temp_mesh = processed_parts[name].copy()
                     state = st.session_state.offsets[name]
                     
-                    # Apply Rotation Matricies calculated from your button taps
                     if state["roll"] != 0:
                         temp_mesh.apply_transform(trimesh.transformations.rotation_matrix(np.radians(state["roll"]), [1, 0, 0]))
                     if state["tumble"] != 0:
@@ -157,7 +122,6 @@ if uploaded_files:
                     if state["spin"] != 0:
                         temp_mesh.apply_transform(trimesh.transformations.rotation_matrix(np.radians(state["spin"]), [0, 0, 1]))
                         
-                    # Apply Nudge Translation Values
                     temp_mesh.apply_translation([state["x"], state["y"], state["z"]])
                     scene.add_geometry(temp_mesh, node_name=f"part_{mesh_idx}")
                 
