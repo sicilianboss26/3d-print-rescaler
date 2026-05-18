@@ -11,16 +11,19 @@ def get_bounds(mesh):
         metrics["🔴 Diameter"] = (x + y) / 2.0
     return metrics
 
-st.set_page_config(page_title="3D Print Rescaler", layout="centered")
+st.set_page_config(page_title="3D Print Rescaler", layout="wide") # Set to wide for side-by-side view
 st.title("🖨️ 3D Print Alignment & Dimension Studio")
 
 uploaded_files = st.file_uploader("Upload STL files", type=["stl"], accept_multiple_files=True)
 
 if uploaded_files:
+    # Set up safe permanent state memory
     if "offsets" not in st.session_state:
         st.session_state.offsets = {}
     if "initial_centers" not in st.session_state:
         st.session_state.initial_centers = {}
+    if "active_part" not in st.session_state:
+        st.session_state.active_part = uploaded_files[0].name
     
     pct = st.number_input("Scale %", min_value=1.0, max_value=1000.0, value=100.0, step=5.0)
     factor = pct / 100.0
@@ -89,50 +92,58 @@ if uploaded_files:
         )
         
         if selected_names:
-            # Isolated rendering block on the main page
-            @st.fragment
-            def render_control_and_preview():
-                col_btn1, col_btn2 = st.columns(2)
-                
-                if col_btn1.button("🎯 Auto-Align Stack (Match Joints)", use_container_width=True):
-                    sorted_by_height = sorted(selected_names, key=lambda n: processed_parts[n].bounds[1][2] - processed_parts[n].bounds[0][2])
-                    current_z_floor = 0.0
-                    for name in sorted_by_height:
-                        mesh = processed_parts[name]
-                        mesh_height = mesh.bounds[1][2] - mesh.bounds[0][2]
-                        st.session_state.offsets[name]["x"] = 0.0
-                        st.session_state.offsets[name]["y"] = 0.0
-                        lowest_z_point = mesh.bounds[0][2]
-                        st.session_state.offsets[name]["z"] = current_z_floor - lowest_z_point
-                        current_z_floor += mesh_height
+            # Safe layout calculation button block
+            col_btn1, col_btn2 = st.columns(2)
+            
+            if col_btn1.button("🎯 Auto-Align Stack (Match Joints)", use_container_width=True):
+                sorted_by_height = sorted(selected_names, key=lambda n: processed_parts[n].bounds[1][2] - processed_parts[n].bounds[0][2])
+                current_z_floor = 0.0
+                for name in sorted_by_height:
+                    mesh = processed_parts[name]
+                    mesh_height = mesh.bounds[1][2] - mesh.bounds[0][2]
+                    st.session_state.offsets[name]["x"] = 0.0
+                    st.session_state.offsets[name]["y"] = 0.0
+                    lowest_z_point = mesh.bounds[0][2]
+                    st.session_state.offsets[name]["z"] = current_z_floor - lowest_z_point
+                    current_z_floor += mesh_height
+                st.rerun()
+
+            if col_btn2.button("🔄 Reset Layout to Center", use_container_width=True):
+                for name in selected_names:
+                    st.session_state.offsets[name] = {"x":0.0, "y":0.0, "z":0.0, "roll":0.0, "tumble":0.0, "spin":0.0}
+                st.rerun()
+
+            # --- NEW INTERACTIVE CLICK-TO-SELECT COMPONENT BAR ---
+            st.write("### 🖱️ Click the Part You Want to Work On:")
+            click_cols = st.columns(len(selected_names))
+            for index, name in enumerate(selected_names):
+                is_active = (st.session_state.active_part == name)
+                button_label = f"🟢 {name} (Active)" if is_active else f"📦 {name}"
+                if click_cols[index].button(button_label, key=f"btn_select_{name}", use_container_width=True):
+                    st.session_state.active_part = name
                     st.rerun()
 
-                if col_btn2.button("🔄 Reset Layout to Center", use_container_width=True):
-                    for name in selected_names:
-                        st.session_state.offsets[name] = {"x":0.0, "y":0.0, "z":0.0, "roll":0.0, "tumble":0.0, "spin":0.0}
-                    st.rerun()
-
-                # CRITICAL FIX: Moved controls out of st.sidebar so they run inside the fragment block safely
-                st.write("### 🛠️ Round Parts Axis Controller")
-                target_part = st.selectbox("Select active part to adjust:", options=selected_names)
-                
-                if target_part:
+            # --- NEW SIDE-BY-SIDE SPLIT LAYOUT WORKSPACE ---
+            view_col1, view_col2 = st.columns([1, 1]) # Perfectly balanced split screens
+            
+            with view_col1:
+                target_part = st.session_state.active_part
+                if target_part in processed_parts:
                     state = st.session_state.offsets[target_part]
-                    st.markdown(f"Adjusting: `{target_part}`")
+                    st.markdown(f"#### 🛠️ Controls: `{target_part}`")
                     
-                    # Split sliders into two clean columns right above the preview
-                    sc1, sc2 = st.columns(2)
-                    with sc1:
-                        st.markdown("**📍 Linear Position (mm)**")
-                        state["x"] = st.slider("Move X (Left/Right)", -200.0, 200.0, float(state["x"]), step=0.5, key=f"sld_x_{target_part}")
-                        state["y"] = st.slider("Move Y (Forward/Back)", -200.0, 200.0, float(state["y"]), step=0.5, key=f"sld_y_{target_part}")
-                        state["z"] = st.slider("Move Z (Up/Down)", -200.0, 200.0, float(state["z"]), step=0.5, key=f"sld_z_{target_part}")
-                    with sc2:
-                        st.markdown("**🔄 Circular Rotation (Degrees)**")
-                        state["roll"] = st.slider("Roll (X Axis)", 0.0, 360.0, float(state["roll"]), step=1.0, key=f"sld_roll_{target_part}")
-                        state["tumble"] = st.slider("Tumble (Y Axis)", 0.0, 360.0, float(state["tumble"]), step=1.0, key=f"sld_tumble_{target_part}")
-                        state["spin"] = st.slider("Spin (Z Axis - Dial)", 0.0, 360.0, float(state["spin"]), step=1.0, key=f"sld_spin_{target_part}")
+                    st.markdown("**📍 Linear Shift (mm)**")
+                    state["x"] = st.slider("Move X (Left/Right)", -200.0, 200.0, float(state["x"]), step=0.5, key=f"ws_x_{target_part}")
+                    state["y"] = st.slider("Move Y (Forward/Back)", -200.0, 200.0, float(state["y"]), step=0.5, key=f"ws_y_{target_part}")
+                    state["z"] = st.slider("Move Z (Up/Down)", -200.0, 200.0, float(state["z"]), step=0.5, key=f"ws_z_{target_part}")
+                    
+                    st.markdown("**🔄 Circular Rotation (Degrees)**")
+                    state["roll"] = st.slider("Roll (X Axis)", 0.0, 360.0, float(state["roll"]), step=1.0, key=f"ws_roll_{target_part}")
+                    state["tumble"] = st.slider("Tumble (Y Axis)", 0.0, 360.0, float(state["tumble"]), step=1.0, key=f"ws_tumble_{target_part}")
+                    state["spin"] = st.slider("Spin (Z Axis - Dial Rotation)", 0.0, 360.0, float(state["spin"]), step=1.0, key=f"ws_spin_{target_part}")
 
+            with view_col2:
+                st.markdown("#### 🔍 Live 3D Fit Assembly Preview")
                 try:
                     scene = trimesh.Scene()
                     active_indices = []
@@ -153,8 +164,6 @@ if uploaded_files:
                             
                         temp_mesh.apply_translation([state["x"], state["y"], state["z"]])
                         scene.add_geometry(temp_mesh, node_name=f"part_{mesh_idx}")
-                    
-                    st.write(f"### 🔍 Live 3D Fit Assembly Preview")
                     
                     export_data = scene.export(file_type='glb')
                     if isinstance(export_data, dict):
@@ -200,5 +209,3 @@ if uploaded_files:
                     st.components.v1.html(html_string, height=510, scrolling=False)
                 except Exception as scene_err:
                     st.error(f"Assembly render error: {scene_err}")
-
-            render_control_and_preview()
