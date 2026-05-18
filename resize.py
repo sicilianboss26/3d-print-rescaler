@@ -7,11 +7,8 @@ import numpy as np
 def get_bounds(mesh):
     x, y, z = mesh.extents[0], mesh.extents[1], mesh.extents[2]
     metrics = {"Width (X)": x, "Depth (Y)": y, "Height (Z)": z}
-    
-    # Smart Circle Check: If X and Y width are virtually identical, show diameter!
     if abs(x - y) < 1.0:
         metrics["🔴 Diameter"] = (x + y) / 2.0
-        
     return metrics
 
 st.set_page_config(page_title="3D Print Rescaler", layout="centered")
@@ -40,7 +37,7 @@ if uploaded_files:
                 }
                 
             mesh = trimesh.load(io.BytesIO(f.getvalue()), file_type='stl')
-            mesh.apply_translation(-mesh.centroid) # Base centering
+            mesh.apply_translation(-mesh.centroid) # Force initial center baseline
             
             orig = get_bounds(mesh)
             if factor != 1.0:
@@ -82,7 +79,37 @@ if uploaded_files:
         )
         
         if selected_names:
-            # --- SIDEBAR CONTROL PANEL ---
+            # --- INTELLIGENT AUTOMATIC STACK BUTTON ---
+            col_btn1, col_btn2 = st.columns(2)
+            
+            if col_btn1.button("🎯 Auto-Align Stack (Match Joints)", use_container_width=True):
+                # Sort parts by height so we stack smaller/flatter items (like lids) on taller bodies
+                sorted_by_height = sorted(selected_names, key=lambda n: processed_parts[n].bounds[1][2] - processed_parts[n].bounds[0][2])
+                
+                current_z_floor = 0.0
+                for name in sorted_by_height:
+                    mesh = processed_parts[name]
+                    mesh_height = mesh.bounds[1][2] - mesh.bounds[0][2]
+                    
+                    # Zero out positions to align centers perfectly across X and Y axes
+                    st.session_state.offsets[name]["x"] = 0.0
+                    st.session_state.offsets[name]["y"] = 0.0
+                    
+                    # Calculate vertical drop translation to seat it precisely on top of the last layer
+                    lowest_z_point = mesh.bounds[0][2]
+                    target_z_shift = current_z_floor - lowest_z_point
+                    st.session_state.offsets[name]["z"] = target_z_shift
+                    
+                    # Advance floor tracking level for the next piece in the assembly
+                    current_z_floor += mesh_height
+                st.rerun()
+
+            if col_btn2.button("🔄 Reset Layout to Center", use_container_width=True):
+                for name in selected_names:
+                    st.session_state.offsets[name] = {"x":0.0, "y":0.0, "z":0.0, "roll":0.0, "tumble":0.0, "spin":0.0}
+                st.rerun()
+
+            # --- SIDEBAR FINE TUNER PANEL ---
             st.sidebar.header("🛠️ Round Parts Axis Controller")
             target_part = st.sidebar.selectbox("Select active part to adjust:", options=selected_names)
             
@@ -90,21 +117,15 @@ if uploaded_files:
                 state = st.session_state.offsets[target_part]
                 st.sidebar.markdown(f"**Modifying Shape:** `{target_part}`")
                 
-                # Nudge Positions
                 st.sidebar.markdown("### 📍 Linear Shift (mm)")
                 state["x"] = st.sidebar.slider("Move X (Left/Right)", -200.0, 200.0, float(state["x"]), step=0.5, key=f"sld_x_{target_part}")
                 state["y"] = st.sidebar.slider("Move Y (Forward/Back)", -200.0, 200.0, float(state["y"]), step=0.5, key=f"sld_y_{target_part}")
                 state["z"] = st.sidebar.slider("Move Z (Up/Down)", -200.0, 200.0, float(state["z"]), step=0.5, key=f"sld_z_{target_part}")
                 
-                # Round Axial Rotations
                 st.sidebar.markdown("### 🔄 Circular Rotation (Degrees)")
                 state["roll"] = st.sidebar.slider("Roll (X Axis)", 0.0, 360.0, float(state["roll"]), step=1.0, key=f"sld_roll_{target_part}")
-                state["tumble"] = st.sidebar.slider("Tumble (Y Axis)", 0.0, 360.0, float(state["tumble"]), step=1.0, key=f"sld_tumble_{target_part}")
+                st.sidebar.slider("Tumble (Y Axis)", 0.0, 360.0, float(state["tumble"]), step=1.0, key=f"sld_tumble_{target_part}")
                 state["spin"] = st.sidebar.slider("Spin (Z Axis - Dial Rotation)", 0.0, 360.0, float(state["spin"]), step=1.0, key=f"sld_spin_{target_part}")
-                
-                if st.sidebar.button("🎯 Snap Back to Origin Center", key="side_rst"):
-                    st.session_state.offsets[target_part] = {"x":0.0, "y":0.0, "z":0.0, "roll":0.0, "tumble":0.0, "spin":0.0}
-                    st.rerun()
 
             # Compile Full View Scene
             try:
