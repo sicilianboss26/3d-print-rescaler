@@ -1,6 +1,7 @@
 import streamlit as st
 import trimesh
 import io
+import base64
 
 def get_bounds(mesh):
     return {"Width (X)": mesh.extents[0], "Depth (Y)": mesh.extents[1], "Height (Z)": mesh.extents[2]}
@@ -49,7 +50,15 @@ if uploaded_files:
     if len(uploaded_files) > 0:
         try:
             st.write("### 🔍 Live 3D Fit Assembly Preview")
-            scene_html = scene.show(viewer='glcl')
-            st.components.v1.html(scene_html, height=500, scrolling=False)
+            # Export assembly scene as an embedded web GLTF data stream
+            gltf_data = scene.export(file_type='gltf')
+            encoded = base64.b64encode(gltf_data).decode()
+            
+            # Use a robust, universal HTML5 canvas deployment to view the model
+            html_string = f"""
+            <script type=module src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.4.0/model-viewer.min.js"></script>
+            <model-viewer src="data:model/gltf+json;base64,{encoded}" ar camera-controls touch-action="none" style="width: 100%; height: 500px; background-color: #f0f2f6; border-radius: 10px;"></model-viewer>
+            """
+            st.components.v1.html(html_string, height=510, scrolling=False)
         except Exception as scene_err:
-            st.caption("Assembly viewer updating...")
+            st.error(f"Assembly render error: {scene_err}")
