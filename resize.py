@@ -68,37 +68,32 @@ if uploaded_files:
         
         if selected_names:
             # --- SIDEBAR PRECISION PANEL ---
-            st.sidebar.header("🛠️ Precision Transform Panel")
+            st.sidebar.header("🛠️ Round Parts Axis Controller")
             target_part = st.sidebar.selectbox("Select active part to adjust:", options=selected_names)
             
             if target_part:
                 state = st.session_state.offsets[target_part]
-                st.sidebar.markdown(f"**Modifying:** `{target_part}`")
+                st.sidebar.markdown(f"**Modifying Shape:** `{target_part}`")
                 
-                # --- POSITION (XYZ) CONTROL ---
-                st.sidebar.markdown("### 📍 Position Offset (mm)")
-                state["x"] = st.sidebar.number_input("Position X", value=state["x"], step=1.0, key=f"num_x_{target_part}")
-                st.sidebar.slider("Slide X", -200.0, 200.0, float(state["x"]), step=0.5, key=f"sld_x_{target_part}", label_visibility="collapsed")
+                # --- POSITION COORDINATES ---
+                st.sidebar.markdown("### 📍 Linear Shift (mm)")
                 
-                state["y"] = st.sidebar.number_input("Position Y", value=state["y"], step=1.0, key=f"num_y_{target_part}")
-                st.sidebar.slider("Slide Y", -200.0, 200.0, float(state["y"]), step=0.5, key=f"sld_y_{target_part}", label_visibility="collapsed")
+                # Dynamic two-way syncing sliders
+                state["x"] = st.sidebar.slider("Move X (Left/Right)", -200.0, 200.0, float(state["x"]), step=0.5, key=f"sld_x_{target_part}")
+                state["y"] = st.sidebar.slider("Move Y (Forward/Back)", -200.0, 200.0, float(state["y"]), step=0.5, key=f"sld_y_{target_part}")
+                state["z"] = st.sidebar.slider("Move Z (Up/Down)", -200.0, 200.0, float(state["z"]), step=0.5, key=f"sld_z_{target_part}")
                 
-                state["z"] = st.sidebar.number_input("Position Z", value=state["z"], step=1.0, key=f"num_z_{target_part}")
-                st.sidebar.slider("Slide Z", -200.0, 200.0, float(state["z"]), step=0.5, key=f"sld_z_{target_part}", label_visibility="collapsed")
+                # --- CYLINDRICAL/ROUND ROTATION ---
+                st.sidebar.markdown("### 🔄 Circular Rotation (Degrees)")
+                st.sidebar.caption("Use Spin (Z) to rotate round caps or cylinders on their center axis perfectly.")
                 
-                # --- ROTATION CONTROL ---
-                st.sidebar.markdown("### 🔄 Rotation (Degrees)")
-                state["roll"] = st.sidebar.number_input("Roll (X Axis)", value=state["roll"], step=5.0, key=f"num_roll_{target_part}")
-                st.sidebar.slider("Slide Roll", 0.0, 360.0, float(state["roll"]), step=1.0, key=f"sld_roll_{target_part}", label_visibility="collapsed")
+                state["roll"] = st.sidebar.slider("Roll (X Axis)", 0.0, 360.0, float(state["roll"]), step=1.0, key=f"sld_roll_{target_part}")
+                state["tumble"] = st.sidebar.slider("Tumble (Y Axis)", 0.0, 360.0, float(state["tumble"]), step=1.0, key=f"sld_tumble_{target_part}")
+                state["spin"] = st.sidebar.slider("Spin (Z Axis - Dial Rotation)", 0.0, 360.0, float(state["spin"]), step=1.0, key=f"sld_spin_{target_part}")
                 
-                state["tumble"] = st.sidebar.number_input("Tumble (Y Axis)", value=state["tumble"], step=5.0, key=f"num_tumble_{target_part}")
-                st.sidebar.slider("Slide Tumble", 0.0, 360.0, float(state["tumble"]), step=1.0, key=f"sld_tumble_{target_part}", label_visibility="collapsed")
-                
-                state["spin"] = st.sidebar.number_input("Spin (Z Axis)", value=state["spin"], step=5.0, key=f"num_spin_{target_part}")
-                st.sidebar.slider("Slide Spin", 0.0, 360.0, float(state["spin"]), step=1.0, key=f"sld_spin_{target_part}", label_visibility="collapsed")
-                
-                if st.sidebar.button("🎯 Reset Part to Center", key="side_rst"):
+                if st.sidebar.button("🎯 Snap Back to Origin Center", key="side_rst"):
                     st.session_state.offsets[target_part] = {"x":0.0, "y":0.0, "z":0.0, "roll":0.0, "tumble":0.0, "spin":0.0}
+                    st.sidebar.success("Reset applied!")
                     st.rerun()
 
             # Compile Scene
@@ -113,7 +108,7 @@ if uploaded_files:
                     temp_mesh = processed_parts[name].copy()
                     state = st.session_state.offsets[name]
                     
-                    # Read values directly from the combined interactive states
+                    # Apply circular rotations natively
                     if state["roll"] != 0:
                         temp_mesh.apply_transform(trimesh.transformations.rotation_matrix(np.radians(state["roll"]), [1, 0, 0]))
                     if state["tumble"] != 0:
