@@ -7,7 +7,7 @@ import numpy as np
 def get_bounds(mesh):
     x, y, z = mesh.extents[0], mesh.extents[1], mesh.extents[2]
     metrics = {"Width (X)": x, "Depth (Y)": y, "Height (Z)": z}
-    if abs(x - y) < 1.5:  # Slightly wider threshold for printed circular features
+    if abs(x - y) < 1.5:  
         metrics["🔴 Diameter"] = (x + y) / 2.0
     return metrics
 
@@ -17,8 +17,11 @@ st.title("🖨️ 3D Print Alignment & Dimension Studio")
 uploaded_files = st.file_uploader("Upload STL files", type=["stl"], accept_multiple_files=True)
 
 if uploaded_files:
+    # Initialize stable tracking states
     if "offsets" not in st.session_state:
         st.session_state.offsets = {}
+    if "initial_centers" not in st.session_state:
+        st.session_state.initial_centers = {}
     
     pct = st.number_input("Scale %", min_value=1.0, max_value=1000.0, value=100.0, step=5.0)
     factor = pct / 100.0
@@ -31,13 +34,17 @@ if uploaded_files:
     
     for i, f in enumerate(uploaded_files):
         try:
-            if f.name not in st.session_state.offsets:
+            mesh = trimesh.load(io.BytesIO(f.getvalue()), file_type='stl')
+            
+            # CRITICAL FIX: Only calculate and apply the center offset ONCE on upload
+            if f.name not in st.session_state.initial_centers:
+                st.session_state.initial_centers[f.name] = -mesh.centroid
                 st.session_state.offsets[f.name] = {
                     "x": 0.0, "y": 0.0, "z": 0.0, "roll": 0.0, "tumble": 0.0, "spin": 0.0
                 }
-                
-            mesh = trimesh.load(io.BytesIO(f.getvalue()), file_type='stl')
-            mesh.apply_translation(-mesh.centroid) # Base centering
+            
+            # Apply the stable baseline offset
+            mesh.apply_translation(st.session_state.initial_centers[f.name])
             
             orig = get_bounds(mesh)
             if factor != 1.0:
@@ -88,7 +95,6 @@ if uploaded_files:
             col_btn1, col_btn2 = st.columns(2)
             
             if col_btn1.button("🎯 Auto-Align Stack (Match Joints)", use_container_width=True):
-                # Sort parts by height bounds to layer them cleanly from base to cap
                 sorted_by_height = sorted(selected_names, key=lambda n: processed_parts[n].bounds[1][2] - processed_parts[n].bounds[0][2])
                 
                 current_z_floor = 0.0
@@ -153,7 +159,6 @@ if uploaded_files:
                 
                 st.write(f"### 🔍 Live 3D Fit Assembly Preview")
                 
-                # Fixed GLB dictionary export breakdown error natively
                 export_data = scene.export(file_type='glb')
                 if isinstance(export_data, dict):
                     glb_data = export_data.get('model', b'') or export_data.get('glb', b'')
